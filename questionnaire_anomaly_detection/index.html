@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Aqua Hub | Interview Quality</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet"><link rel="stylesheet" href="styles.css">
+</head>
+<body><div class="app-shell">
+  <aside class="sidebar"><div class="brand"><b>A</b>Aqua Hub</div><p class="nav-label">WORKSPACE</p>
+    <button class="nav-toggle selected" data-view="interview">⌑ <span>Questionnaire form</span></button>
+    <button class="nav-toggle" data-view="supervisor">◉ <span>AI supervisor monitor</span><i class="alert-count" hidden>0</i></button>
+    <div class="sidebar-note"><i></i>Live quality checks enabled</div>
+  </aside>
+  <main class="main-panel"><header class="topbar"><div><p class="eyebrow">FIELD DATA COLLECTION</p><h2 id="pageTitle">Interview questionnaire</h2></div><span class="connection"><i></i>Checks active</span></header>
+    <section id="interviewView" class="view">
+      <div id="setupCard" class="card setup-card"><p class="eyebrow">NEW INTERVIEW</p><h1>Start a quality-assured interview</h1><p class="muted">Every response is timestamped and checked while the respondent is being interviewed.</p>
+        <div class="setup-fields"><label>Enumerator<select id="enumerator"><option>ENUM004</option><option>ENUM001</option><option>ENUM002</option><option>ENUM003</option></select></label><label>Respondent name<input id="respondentName" placeholder="e.g. Joe" autocomplete="name"></label></div>
+        <button id="startButton" class="primary-btn">Start questionnaire <b>→</b></button><p id="setupError" class="form-error"></p></div>
+      <div id="interviewCard" class="card interview-card" hidden><div class="interview-meta"><span id="interviewId"></span><span id="saveState">Recording answers</span></div><div class="progress-label"><span id="progressText"></span><span id="progressPercent"></span></div><div class="progress-track"><div id="progressBar"></div></div>
+        <div class="question-card"><p id="questionCode" class="eyebrow"></p><h1 id="questionText"></h1><label for="responseInput">Response</label><div class="voice-input"><input id="responseInput"><button id="voiceButton" type="button" class="voice-btn" aria-label="Start voice recognition" title="Speak your answer">🎙</button></div><p id="voiceStatus" class="voice-status" aria-live="polite">Voice recognition is ready.</p><p id="answerError" class="form-error"></p><div id="liveCheck" class="live-check"><b>✓</b><div><strong>Ready to check</strong><small>Save an answer to run the quality check.</small></div></div><div class="question-actions"><button id="pauseButton" class="secondary-btn">Pause interview</button><button id="submitButton" class="primary-btn">Save response and continue <b>→</b></button></div></div></div>
+      <div id="completionCard" class="card completion-card" hidden><div class="completion-heading"><b>✓</b><div><p class="eyebrow">INTERVIEW SAVED</p><h1>Questionnaire completed</h1><p id="completionMessage" class="muted"></p></div></div><div id="resultSummary" class="result-summary"></div><div class="table-wrap"><table><thead><tr><th>Question</th><th>Response</th><th>Time taken</th><th>Quality check</th></tr></thead><tbody id="answerTable"></tbody></table></div><div class="completion-actions"><button id="newInterviewButton" class="primary-btn">Start a new interview</button><button id="monitorButton" class="secondary-btn">Open supervisor monitor</button></div></div>
+    </section>
+    <section id="supervisorView" class="view" hidden><div class="monitor-intro"><div><p class="eyebrow">AI SUPERVISOR</p><h1>Live interview quality monitor</h1><p class="muted">Review answers and timing checks as interviews are recorded.</p></div><button id="clearDataButton" class="text-btn">Clear demo records</button></div><div class="metric-grid"><div><span>Interviews</span><strong id="interviewTotal">0</strong></div><div><span>Answers checked</span><strong id="answerTotal">0</strong></div><div class="flag-metric"><span>Flagged anomalies</span><strong id="flagTotal">0</strong></div><div><span>Quality rate</span><strong id="qualityRate">—</strong></div></div><div class="card monitor-card"><div class="table-header"><h3>Interview activity</h3><div class="filters"><button class="filter active" data-filter="all">All</button><button class="filter" data-filter="flagged">Flagged</button><button class="filter" data-filter="normal">Normal</button></div></div><div class="table-wrap"><table><thead><tr><th>Interview / respondent</th><th>Question</th><th>Response</th><th>Duration</th><th>Status</th><th>AI finding</th></tr></thead><tbody id="monitorTable"></tbody></table></div><p id="emptyMonitor" class="empty-state">No interviews have been recorded yet.</p></div></section>
+  </main>
+</div><script src="script.js"></script></body></html>
