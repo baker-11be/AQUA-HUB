@@ -16,8 +16,9 @@
   {
     id: 'Q03',
     text: 'What is your main occupation?',
-    type: 'select',
+    type: 'text',
     key: 'occupation',
+    placeholder: 'e.g. Teacher, Student, Farming, or Other',
     options: ['Farming', 'Business', 'Salaried employment', 'Student', 'Other']
   },
   {
@@ -73,6 +74,14 @@ function safeText(value) {
 
 function makeInterviewId() {
   return `INT${new Date().toISOString().replace(/[-:.TZ]/g, '').slice(0, 14)}${Math.floor(Math.random() * 90 + 10)}`;
+}
+
+function isTextValue(value) {
+  return /^[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ' .-]*$/.test(value.trim());
+}
+
+function isNumericAge(value) {
+  return /^\d+$/.test(value.trim());
 }
 
 function updateVoiceStatus(message, isError = false) {
@@ -167,7 +176,7 @@ function initialiseVoice() {
   if (!recognition) {
     recognition = new SpeechRecognition();
     recognition.lang = 'en-US';
-    recognition.interimResults = true;
+    recognition.interimResults = false;
     recognition.continuous = false;
 
     recognition.onstart = () => {
@@ -180,11 +189,10 @@ function initialiseVoice() {
     };
 
     recognition.onresult = (event) => {
-      const transcript = Array.from(event.results)
-        .map((result) => result[0].transcript)
-        .join(' ')
-        .trim();
+      const result = event.results[event.results.length - 1];
+      if (!result || !result[0]) return;
 
+      const transcript = result[0].transcript.trim();
       currentQuestionTranscript = transcript;
 
       const input = $('responseInput');
@@ -192,9 +200,7 @@ function initialiseVoice() {
 
       input.value = transcript;
       voiceUsed = true;
-      updateVoiceStatus(
-        event.results[event.results.length - 1].isFinal ? 'Voice response captured and stored.' : 'Listening…'
-      );
+      updateVoiceStatus(result.isFinal ? 'Voice response captured and stored.' : 'Listening…');
     };
 
     recognition.onerror = (event) => {
@@ -208,11 +214,12 @@ function initialiseVoice() {
     recognition.onend = () => {
       listening = false;
       if (voiceButton) {
+        voiceButton.disabled = false;
         voiceButton.classList.remove('listening');
-        voiceButton.setAttribute('aria-label', 'Voice recognition is automatic');
+        voiceButton.setAttribute('aria-label', 'Record answer using voice');
       }
       if ($('voiceStatus') && !$('voiceStatus').classList.contains('error')) {
-        updateVoiceStatus('Voice capture is active. The spoken response is being stored automatically.');
+        updateVoiceStatus('Voice capture stopped. Click the microphone to record again.');
       }
     };
   }
@@ -223,6 +230,8 @@ function initialiseVoice() {
 function autoStartVoiceInput() {
   if (!initialiseVoice()) return;
 
+  if (listening) return;
+
   try {
     recognition.start();
   } catch (error) {
@@ -230,7 +239,19 @@ function autoStartVoiceInput() {
   }
 }
 
-function toggleVoice() {
+async function toggleVoice() {
+  const voiceButton = $('voiceButton');
+  if (!SpeechRecognition) return;
+
+  if (listening) {
+    if (recognition) recognition.stop();
+    if (voiceButton) {
+      voiceButton.disabled = false;
+    }
+    return;
+  }
+
+  await startQuestionAudioCapture();
   autoStartVoiceInput();
 }
 
@@ -246,10 +267,10 @@ function renderInputField(question) {
       '<option value="">Select an answer</option>' +
       question.options.map((option) => `<option value="${option}">${option}</option>`).join('');
   } else {
-    input.type = question.type;
-    input.placeholder = question.placeholder || 'Type your answer';
+    input.type = question.key === 'age' ? 'number' : 'text';
+    input.placeholder = question.key === 'age' ? 'e.g. 24' : question.placeholder || 'Type your answer';
     input.autocomplete = 'off';
-    input.inputMode = 'text';
+    input.inputMode = question.key === 'age' ? 'numeric' : 'text';
   }
 
   previous.replaceWith(input);
@@ -286,10 +307,16 @@ function renderQuestion() {
   voiceUsed = false;
   currentQuestionTranscript = '';
   currentQuestionAudioData = '';
-  updateVoiceStatus('Voice capture is on. The interviewer response is being recorded automatically.');
 
+  const voiceButton = $('voiceButton');
+  if (voiceButton) {
+    voiceButton.disabled = false;
+    voiceButton.classList.remove('listening');
+    voiceButton.setAttribute('aria-label', 'Record answer using voice');
+  }
+
+  updateVoiceStatus('Voice capture is on. Click the microphone to record again if needed.');
   if (SpeechRecognition) {
-    startQuestionAudioCapture();
     autoStartVoiceInput();
   }
 }
@@ -324,41 +351,107 @@ function startInterview() {
   initialiseVoice();
 }
 
+function categoryLabel(category) {
+  const map = {
+    duplicate: 'Duplicate',
+    completion_time: 'Completion time',
+    missing_value: 'Missing value',
+    inconsistency: 'Inconsistency'
+  };
+
+  return map[category] || 'Inconsistency';
+}
+
+function getFlagText(flag) {
+  if (typeof flag === 'string') {
+    return flag;
+  }
+
+  return flag?.message || 'Anomaly detected';
+}
+
+function getFlagCategory(flag) {
+  if (typeof flag === 'string') {
+    return 'inconsistency';
+  }
+
+  return flag?.category || 'inconsistency';
+}
+
+function buildAnswerSummary(answer) {
+  const duplicateCount = answer?.duplicate_count ?? 0;
+  const pauseSeconds = answer?.pause_seconds ?? 0;
+  const startTime = answer?.question_started_at || answer?.interview_started_at || '—';
+  const endTime = answer?.question_ended_at || answer?.interview_end || '—';
+
+  return `Duplicates: ${duplicateCount} | Pause: ${pauseSeconds}s | Start: ${startTime} | End: ${endTime}`;
+}
+
 function detectAnomalies(question, value, duration) {
   const anomalies = [];
-  const numericValue = Number.parseInt(value, 10);
+  const responseText = (value || '').trim();
+  const numericValue = Number.parseInt(responseText, 10);
+  const allowedOccupationValues = ['farming', 'business', 'salaried employment', 'student', 'other'];
+
+  if (!responseText) {
+    anomalies.push({ category: 'missing_value', message: 'Missing response value for this question' });
+  }
 
   const duplicateAnswer = records.some(
     (record) =>
       record.respondent.toLowerCase() === interview.respondent.toLowerCase() &&
       record.answers.some(
-        (answer) => answer.id === question.id && answer.response.toLowerCase() === value.toLowerCase()
+        (answer) => answer.id === question.id && (answer.response || '').trim().toLowerCase() === responseText.toLowerCase()
       )
   );
 
-  if (duration < 2) anomalies.push('Answer recorded unusually fast');
-  if (duration > 180) anomalies.push('Long pause before response');
-  if (questionPauseSeconds > 60) anomalies.push('Long pause/resume period recorded');
-  if (duplicateAnswer) anomalies.push('Duplicate response found for this respondent');
-  if (question.key === 'name' && value.toLowerCase() !== interview.respondent.toLowerCase()) {
-    anomalies.push('Name does not match interview registration');
+  if (duration < 2) {
+    anomalies.push({ category: 'completion_time', message: 'Answer recorded unusually fast' });
+  }
+  if (duration > 180) {
+    anomalies.push({ category: 'completion_time', message: 'Answer took longer than expected' });
+  }
+  if (questionPauseSeconds > 60) {
+    anomalies.push({ category: 'completion_time', message: 'Long pause/resume period recorded' });
+  }
+  if (duplicateAnswer) {
+    anomalies.push({ category: 'duplicate', message: 'Duplicate response found for this respondent' });
+  }
+  if (question.key === 'name' && responseText && !isTextValue(responseText)) {
+    anomalies.push({ category: 'inconsistency', message: 'Name must be entered as text only' });
+  }
+  if (question.key === 'name' && responseText && responseText.toLowerCase() !== interview.respondent.toLowerCase()) {
+    anomalies.push({ category: 'inconsistency', message: 'Name does not match interview registration' });
+  }
+  if (question.key === 'district' && responseText && !isTextValue(responseText)) {
+    anomalies.push({ category: 'inconsistency', message: 'District must be entered as a place name' });
   }
   if (
     question.key === 'age' &&
     (!Number.isFinite(numericValue) || numericValue < 15 || numericValue > 120)
   ) {
-    anomalies.push('Age is outside the expected range');
+    anomalies.push({ category: 'inconsistency', message: 'Age is outside the expected range' });
   }
   if (
     question.key === 'household' &&
     (!Number.isFinite(numericValue) || numericValue < 1 || numericValue > 40)
   ) {
-    anomalies.push('Household size is outside the expected range');
+    anomalies.push({ category: 'inconsistency', message: 'Household size is outside the expected range' });
+  }
+
+  if (question.key === 'occupation') {
+    const normalizedOccupation = responseText.toLowerCase();
+    if (!allowedOccupationValues.includes(normalizedOccupation)) {
+      anomalies.push({
+        category: 'inconsistency',
+        message: `Occupation is outside the listed options; entered as Other: ${responseText}`
+      });
+    }
   }
 
   const ageAnswer = interview.answers.find((answer) => answer.key === 'age');
   if (question.key === 'marital' && Number.parseInt(ageAnswer?.response, 10) < 18 && value === 'Married') {
-    anomalies.push('Marital status conflicts with reported age');
+    anomalies.push({ category: 'inconsistency', message: 'Marital status conflicts with reported age' });
   }
 
   return anomalies;
@@ -413,6 +506,24 @@ async function saveAnswer() {
     return;
   }
 
+  if (question.key === 'name' && !isTextValue(value)) {
+    $('answerError').textContent = 'Name must be entered as text only.';
+    responseInput.focus();
+    return;
+  }
+
+  if (question.key === 'age' && !isNumericAge(value)) {
+    $('answerError').textContent = 'Age must be entered as a number.';
+    responseInput.focus();
+    return;
+  }
+
+  if (question.key === 'district' && !isTextValue(value)) {
+    $('answerError').textContent = 'District must be a place name, not a number.';
+    responseInput.focus();
+    return;
+  }
+
   const answerCheck = question.check ? question.check(value) : null;
   if (answerCheck) {
     $('answerError').textContent = answerCheck;
@@ -426,10 +537,23 @@ async function saveAnswer() {
   const flags = detectAnomalies(question, value, duration);
 
   const transcriptValue = currentQuestionTranscript || value;
+  const normalizedOccupation = question.key === 'occupation' && !['farming', 'business', 'salaried employment', 'student', 'other'].includes(value.toLowerCase())
+    ? 'Other'
+    : value;
+  const duplicateCount = records.filter(
+    (record) =>
+      record.respondent.toLowerCase() === interview.respondent.toLowerCase() &&
+      record.answers.some((answer) => answer.id === question.id && (answer.response || '').trim().toLowerCase() === normalizedOccupation.toLowerCase())
+  ).length;
+
   const answerRecord = {
     ...question,
-    response: value,
+    response: normalizedOccupation,
+    raw_response: value,
+    rubric: question.text,
+    response_status: flags.length ? 'flagged' : 'completed',
     voice_transcript: transcriptValue,
+    voice_text: transcriptValue,
     voice_audio_data: currentQuestionAudioData,
     response_source: voiceUsed ? 'voice' : 'typed',
     interview_started_at: startedAt.toISOString(),
@@ -440,8 +564,11 @@ async function saveAnswer() {
     pause_ended_at: currentQuestionPauseEnd ? currentQuestionPauseEnd.toISOString() : null,
     pause_seconds: questionPauseSeconds,
     response_time_seconds: duration,
+    duplicate_count: duplicateCount,
     status: flags.length ? 'flagged' : 'normal',
-    flags
+    flags,
+    anomaly_category: flags[0] ? getFlagCategory(flags[0]) : 'normal',
+    summary: `Duplicates: ${duplicateCount} | Pause: ${questionPauseSeconds}s | Start: ${currentQuestionStartedAt.toISOString()} | End: ${end.toISOString()}`
   };
 
   interview.answers.push(answerRecord);
@@ -449,7 +576,7 @@ async function saveAnswer() {
   const liveCheck = $('liveCheck');
   if (flags.length) {
     liveCheck.className = 'live-check flagged';
-    liveCheck.innerHTML = `<b>!</b><div><strong>Flagged for supervisor review</strong><small>${safeText(flags.join(' · '))}</small></div>`;
+    liveCheck.innerHTML = `<b>!</b><div><strong>Flagged for supervisor review</strong><small>${safeText(flags.map((flag) => getFlagText(flag)).join(' · '))}</small></div>`;
     $('saveState').textContent = 'Anomaly recorded';
   } else {
     liveCheck.className = 'live-check normal';
@@ -501,7 +628,8 @@ function completeInterview() {
           <td>${answer.response_time_seconds}s</td>
           <td>
             <em class="badge ${answer.status}">${answer.status === 'flagged' ? 'Flagged' : 'Normal'}</em>
-            ${answer.flags.length ? `<small class="finding">${safeText(answer.flags.join('; '))}</small>` : ''}
+            ${answer.flags.length ? `<small class="finding">${safeText(answer.flags.map((flag) => `${categoryLabel(getFlagCategory(flag))}: ${getFlagText(flag)}`).join('; '))}</small>` : ''}
+            <small class="finding">${safeText(answer.summary || buildAnswerSummary(answer))}</small>
             ${answer.voice_audio_data ? `<audio controls src="${answer.voice_audio_data}"></audio>` : ''}
           </td>
         </tr>
@@ -526,6 +654,85 @@ function getAllAnswers() {
   );
 }
 
+function renderAnomalySummary() {
+  const allAnswers = getAllAnswers();
+  const flaggedAnswers = allAnswers.filter((answer) => answer.status === 'flagged');
+  const summary = window.summarizeAnomalyDetails ? window.summarizeAnomalyDetails(flaggedAnswers) : { totalFlaggedAnswers: flaggedAnswers.length, totalFlags: 0, categoryCounts: {}, mostCommonCategory: null, details: [] };
+
+  const summaryLabel = $('anomalySummaryLabel');
+  if (summaryLabel) {
+    summaryLabel.textContent = `${summary.totalFlaggedAnswers} flagged answer${summary.totalFlaggedAnswers === 1 ? '' : 's'}`;
+  }
+
+  const summaryStats = $('anomalySummaryStats');
+  if (summaryStats) {
+    const categoryEntries = Object.entries(summary.categoryCounts || {});
+    const mostCommon = categoryEntries.length ? categoryEntries.sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0] : null;
+    const riskLevel = summary.totalFlaggedAnswers === 0 ? 'Clean' : summary.totalFlaggedAnswers <= 2 ? 'Low' : summary.totalFlaggedAnswers <= 5 ? 'Medium' : 'High';
+
+    summaryStats.innerHTML = `
+      <div><span>Flagged answers</span><strong>${summary.totalFlaggedAnswers}</strong></div>
+      <div><span>Flag events</span><strong>${summary.totalFlags}</strong></div>
+      <div><span>Most common</span><strong>${mostCommon ? categoryLabel(mostCommon[0]) : 'None'}</strong></div>
+      <div><span>Risk level</span><strong>${riskLevel}</strong></div>
+    `;
+  }
+
+  const chart = $('anomalyChart');
+  if (chart) {
+    const categoryEntries = Object.entries(summary.categoryCounts || {});
+    const maxCount = categoryEntries.length ? Math.max(...categoryEntries.map(([, count]) => count)) : 1;
+    const palette = {
+      duplicate: '#3867d6',
+      completion_time: '#f7b731',
+      missing_value: '#8854d0',
+      inconsistency: '#eb3b5a'
+    };
+
+    chart.innerHTML = categoryEntries.length
+      ? categoryEntries
+          .slice()
+          .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+          .map(([category, count]) => {
+            const height = Math.max((count / maxCount) * 100, 14);
+            const label = categoryLabel(category);
+            return `
+              <div class="chart-bar-group">
+                <strong>${count}</strong>
+                <div class="chart-bar" style="height:${height}%; background:linear-gradient(180deg, ${palette[category] || '#0a7f7a'}, #349f98);"></div>
+                <span class="chart-bar-label">${safeText(label)}</span>
+              </div>
+            `;
+          })
+          .join('')
+      : '<div class="chart-bar-group"><strong>0</strong><div class="chart-bar" style="height:12%; background:linear-gradient(180deg, #cfeae6, #dfeeea);"></div><span class="chart-bar-label">No anomalies</span></div>';
+  }
+
+  const table = $('anomalyDetailTable');
+  if (table) {
+    const rows = summary.details.length
+      ? summary.details
+          .map(
+            (detail) => `
+              <tr>
+                <td>${safeText(detail.interviewId)}</td>
+                <td>${safeText(detail.enumerator)}</td>
+                <td>${safeText(detail.respondent)}</td>
+                <td>${safeText(detail.question)}</td>
+                <td>${safeText(detail.response)}</td>
+                <td><span class="anomaly-badge ${detail.category}">${safeText(detail.label)}</span></td>
+                <td>${safeText(detail.message)}</td>
+                <td>${detail.duration}s</td>
+              </tr>
+            `
+          )
+          .join('')
+      : '<tr><td colspan="8" class="anomaly-detail-empty">No anomalies recorded for this dataset.</td></tr>';
+
+    table.innerHTML = rows;
+  }
+}
+
 function renderMonitor() {
   const allAnswers = getAllAnswers();
   const flaggedCount = allAnswers.filter((answer) => answer.status === 'flagged').length;
@@ -538,23 +745,35 @@ function renderMonitor() {
 
   $('monitorTable').innerHTML = visible
     .map(
-      (answer) => `
-        <tr>
-          <td><strong>${safeText(answer.respondent)}</strong><small>${answer.interviewId} · ${answer.enumerator}</small></td>
-          <td>${answer.id}</td>
-          <td>${safeText(answer.response)}${answer.voice_transcript ? `<small class="finding">Voice: ${safeText(answer.voice_transcript)}</small>` : ''}</td>
-          <td>${answer.response_time_seconds}s${answer.pause_seconds ? `<small>${answer.pause_seconds}s paused</small>` : ''}</td>
-          <td><em class="badge ${answer.status}">${answer.status === 'flagged' ? 'Flagged' : 'Normal'}</em></td>
-          <td>
-            ${answer.flags.length ? safeText(answer.flags.join('; ')) : `No inconsistency detected · ${safeText(answer.device || 'device not captured').slice(0, 42)}`}
-            ${answer.voice_audio_data ? `<audio controls src="${answer.voice_audio_data}"></audio>` : ''}
-          </td>
-        </tr>
-      `
+      (answer) => {
+        const flagSummary = answer.flags.length
+          ? answer.flags
+              .map((flag) => `${categoryLabel(getFlagCategory(flag))}: ${getFlagText(flag)}`)
+              .join('; ')
+          : `No inconsistency detected · ${safeText(answer.device || 'device not captured').slice(0, 42)}`;
+
+        const questionSummary = answer.summary || buildAnswerSummary(answer);
+
+        return `
+          <tr>
+            <td><strong>${safeText(answer.respondent)}</strong><small>${answer.interviewId} · ${answer.enumerator}</small></td>
+            <td>${answer.id}</td>
+            <td>${safeText(answer.response)}${answer.voice_transcript ? `<small class="finding">Voice: ${safeText(answer.voice_transcript)}</small>` : ''}${answer.raw_response && answer.raw_response !== answer.response ? `<small class="finding">Other detail: ${safeText(answer.raw_response)}</small>` : ''}</td>
+            <td>${answer.response_time_seconds}s${answer.pause_seconds ? `<small>${answer.pause_seconds}s paused</small>` : ''}</td>
+            <td><em class="badge ${answer.status}">${answer.status === 'flagged' ? 'Flagged' : 'Normal'}</em></td>
+            <td>
+              ${safeText(flagSummary)}<br>
+              <small class="finding">${safeText(questionSummary)}</small>
+              ${answer.voice_audio_data ? `<audio controls src="${answer.voice_audio_data}"></audio>` : ''}
+            </td>
+          </tr>
+        `;
+      }
     )
     .join('');
 
   $('emptyMonitor').hidden = visible.length > 0;
+  renderAnomalySummary();
 }
 
 function updateSupervisorBadge() {

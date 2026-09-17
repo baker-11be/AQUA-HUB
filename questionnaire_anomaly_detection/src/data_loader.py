@@ -16,6 +16,14 @@ REQUIRED_COLUMNS = {
     "pause_seconds",
     "question_text",
 }
+OPTIONAL_COLUMNS = {
+    "response",
+    "response_status",
+    "rubric",
+    "voice_text",
+    "duplicate_flag",
+    "summary",
+}
 
 
 def load_questionnaire_data(csv_path: Union[str, Path]) -> pd.DataFrame:
@@ -28,5 +36,8 @@ def load_questionnaire_data(csv_path: Union[str, Path]) -> pd.DataFrame:
         raise ValueError(
             f"CSV file is missing required columns: {sorted(missing_columns)}"
         )
+
+    for column in sorted(OPTIONAL_COLUMNS - set(df.columns)):
+        df[column] = ""
 
     return df
