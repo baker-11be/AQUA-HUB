@@ -7,3 +7,5 @@ venv/
 .DS_Store
 model_outputs/
 *.joblib
+data/aqua_hub.sqlite3*
+data/audio/

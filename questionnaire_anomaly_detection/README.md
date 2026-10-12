@@ -30,10 +30,30 @@ python predict.py
 ## API
 
 ```bash
+pip install -r requirements.txt
 uvicorn api.main:app --reload
 ```
 
-Then visit:
+Open `http://127.0.0.1:8000` to use Aqua Hub. The same-origin API and PWA shell are served together. The local development accounts are:
+
+- Enumerator: `ENUM001` / `field-demo-2026`
+- Supervisor: `SUPERVISOR` / `monitor-demo-2026`
+
+These demo accounts are created only when `AQUA_ENV` is not `production`. For production, set `AQUA_ENV=production`, use a separate persistent `AQUA_DB_PATH`, and configure `AQUA_BOOTSTRAP_ENUMERATOR_USER`, `AQUA_BOOTSTRAP_ENUMERATOR_PASSWORD`, `AQUA_BOOTSTRAP_SUPERVISOR_USER`, and `AQUA_BOOTSTRAP_SUPERVISOR_PASSWORD` before starting the service. Serve production over HTTPS so session cookies and microphone access are protected. Do not reuse the local development database in production.
+
+The enumerator app installs as a PWA from a supported browser and caches its app shell. Interview drafts and pending submissions are stored in IndexedDB on the device and synchronized when the connection returns. The supervisor monitor is served only through supervisor-authorized API routes. It combines server-side questionnaire checks with the trained Isolation Forest; if a saved model was built with a different scikit-learn version, the API trains a compatible in-memory copy from the project's raw questionnaire data and preserves the saved artifact. Voice recording is disabled unless the respondent has consented. Recordings are transcribed on the server with Faster Whisper; its small `tiny` model is downloaded on the first transcription request. Audio remains only in the local draft queue when transcription cannot be reached; use locked, managed devices because local drafts are stored in browser IndexedDB.
+
+For phone installation, deploy the app at an HTTPS address first. On Android, open the address in Chrome and choose **Install app** or **Add to Home screen**. On iPhone or iPad, open it in Safari, choose **Share**, then **Add to Home Screen**. `127.0.0.1` is only reachable from the computer running the server; a phone needs the deployed HTTPS address. Microphone capture also requires a secure HTTPS origin and user permission.
+
+Run the API tests with:
+
+```bash
+python -m unittest discover -s tests -p "test_api.py"
+```
+
+The existing CSV anomaly endpoint remains available to supervisor accounts at `/detect-anomalies`.
+
+Health and API documentation:
 
 - `http://127.0.0.1:8000/health`
 - `http://127.0.0.1:8000/docs`

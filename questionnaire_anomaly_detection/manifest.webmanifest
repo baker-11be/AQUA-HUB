@@ -1,0 +1,19 @@
+{
+  "id": "/",
+  "name": "Aqua Hub Field Interviews",
+  "short_name": "Aqua Hub",
+  "description": "Secure field interview capture and supervisor review.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f5f8f8",
+  "theme_color": "#087e78",
+  "icons": [
+    {
+      "src": "/icons/aqua-hub.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
